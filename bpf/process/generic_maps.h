@@ -5,6 +5,43 @@
 #define __GENERIC_MAPS_H__
 
 #include "lib/data_msg.h"
+#include "errmetrics.h"
+#include "heap.h"
+
+/*
+ * The uprobe/usdt probes path in kernel do not disable preemption,
+ * we need to use hash instead of per-cpu heap.
+ */
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(map_flags, BPF_F_NO_PREALLOC);
+	__uint(max_entries, 1); // will be resized by agent
+	__type(key, __u64);
+	__type(value, struct msg_generic_kprobe);
+} process_call_heap SEC(".maps");
+
+FUNC_INLINE void *uprobe_heap_get(void)
+{
+	__u64 key = get_current_pid_tgid();
+	void *val = map_lookup_elem(&process_call_heap, &key);
+	struct heap_ro_value *ro;
+	int zidx = 0;
+
+	if (val)
+		return val;
+	ro = map_lookup_elem(&heap_ro_zero, &zidx);
+	if (!ro)
+		return 0;
+	if (map_update_elem(&process_call_heap, &key, ro, BPF_ANY)) {
+		errmetrics(E2BIG);
+		return 0;
+	}
+	return map_lookup_elem(&process_call_heap, &key);
+}
+
+#else
 
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -12,6 +49,15 @@ struct {
 	__type(key, __u32);
 	__type(value, struct msg_generic_kprobe);
 } process_call_heap SEC(".maps");
+
+FUNC_INLINE void *uprobe_heap_get(void)
+{
+	__u32 zero = 0;
+
+	return map_lookup_elem(&process_call_heap, &zero);
+}
+
+#endif /* GENERIC_UPROBE || GENERIC_URETPROBE || GENERIC_USDT */
 
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
@@ -68,5 +114,24 @@ struct {
 	__type(value, struct write_offload_data);
 } write_offload SEC(".maps");
 #endif
+
+#if defined(GENERIC_UPROBE) || defined(GENERIC_URETPROBE) || defined(GENERIC_USDT)
+
+FUNC_INLINE long heap_dtor(long ret)
+{
+	__u64 key = get_current_pid_tgid();
+
+	map_delete_elem(&process_call_heap, &key);
+	return ret;
+}
+
+#else
+
+FUNC_INLINE long heap_dtor(long ret)
+{
+	return ret;
+}
+
+#endif /* GENERIC_UPROBE || GENERIC_URETPROBE || GENERIC_USDT */
 
 #endif // __GENERIC_MAPS_H__
