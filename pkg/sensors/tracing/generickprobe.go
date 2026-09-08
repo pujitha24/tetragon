@@ -217,9 +217,7 @@ func createMultiKprobeSensor(polInfo *policyInfo, multiIDs []idtable.EntryID, ha
 
 	if has.selector {
 		maps = append(maps, createSelectorMaps(load, nil)...)
-		if substringMapEntries > 0 {
-			substringMap := program.MapBuilderSensor("substring_map", load)
-			substringMap.SetMaxEntries(substringMapEntries)
+		if substringMap := createSubStringMap(load, substringMapEntries); substringMap != nil {
 			maps = append(maps, substringMap)
 		}
 
@@ -300,9 +298,7 @@ func createMultiKprobeSensor(polInfo *policyInfo, multiIDs []idtable.EntryID, ha
 
 		if has.selector {
 			maps = append(maps, createSelectorMaps(loadret, nil)...)
-			if substringMapEntries > 0 {
-				substringMap := program.MapBuilderSensor("substring_map", loadret)
-				substringMap.SetMaxEntries(substringMapEntries)
+			if substringMap := createSubStringMap(loadret, substringMapEntries); substringMap != nil {
 				maps = append(maps, substringMap)
 			}
 		}
@@ -335,13 +331,7 @@ func validateKprobeType(ty string) error {
 }
 
 func validateKprobeFeatures(spec *v1alpha1.KProbeSpec) error {
-	if selectors.HasOperator(spec.Selectors, selectors.SelectorOpSubString) && !bpf.HasKfunc("bpf_strnstr") {
-		return errors.New("can't use SubString operator, no kernel support")
-	}
-	if selectors.HasOperator(spec.Selectors, selectors.SelectorOpSubStringIgnCase) && !bpf.HasKfunc("bpf_strncasestr") {
-		return errors.New("can't use SubStringIgnCase operator, no kernel support")
-	}
-	return nil
+	return validateSubStringSelectorFeatures(spec.Selectors)
 }
 
 type kpValidateInfo struct {
@@ -625,7 +615,7 @@ func createGenericKprobeSensor(
 	dups := NewDupInstance()
 
 	for i := range kprobes {
-		if err := appendMacrosSelectors(kprobes[i].Selectors, spec.SelectorsMacros); err != nil {
+		if err := appendMacrosAndValidateSelectors(kprobes[i].Selectors, spec.SelectorsMacros); err != nil {
 			return nil, fmt.Errorf("append macros selectors: %w", err)
 		}
 
@@ -1062,11 +1052,6 @@ func createKprobeSensorFromEntry(polInfo *policyInfo, kprobeEntry *genericKprobe
 	if has.selector {
 		selector := getProgramSelector(load, kprobeEntry)
 		maps = append(maps, createSelectorMaps(load, selector)...)
-		if substringMapEntries := len(selector.SubStrings()); substringMapEntries > 0 {
-			substringMap := program.MapBuilderSensor("substring_map", load)
-			substringMap.SetMaxEntries(substringMapEntries)
-			maps = append(maps, substringMap)
-		}
 
 		selMatchBinariesMap := program.MapBuilderProgram("tg_mb_sel_opts", load)
 		maps = append(maps, selMatchBinariesMap)
@@ -1176,11 +1161,6 @@ func createKprobeSensorFromEntry(polInfo *policyInfo, kprobeEntry *genericKprobe
 		if has.selector {
 			selector := getProgramSelector(loadret, kprobeEntry)
 			maps = append(maps, createSelectorMaps(loadret, selector)...)
-			if selector != nil && len(selector.SubStrings()) > 0 {
-				substringMap := program.MapBuilderSensor("substring_map", loadret)
-				substringMap.SetMaxEntries(len(selector.SubStrings()))
-				maps = append(maps, substringMap)
-			}
 		}
 
 		// add maps with non-default paths (pins) to the retprobe

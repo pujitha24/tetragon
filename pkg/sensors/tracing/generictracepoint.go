@@ -614,7 +614,7 @@ func createGenericTracepointSensor(
 	maps := []*program.Map{}
 	progs := make([]*program.Program, 0, len(tracepoints))
 	for _, tp := range tracepoints {
-		if err := appendMacrosSelectors(tp.Spec.Selectors, spec.SelectorsMacros); err != nil {
+		if err := appendMacrosAndValidateSelectors(tp.Spec.Selectors, spec.SelectorsMacros); err != nil {
 			return nil, fmt.Errorf("append macros selectos: %w", err)
 		}
 

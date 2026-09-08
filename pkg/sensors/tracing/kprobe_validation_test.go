@@ -16,7 +16,9 @@ import (
 	"github.com/cilium/tetragon/pkg/k8s/apis/cilium.io/v1alpha1"
 	"github.com/cilium/tetragon/pkg/option"
 	"github.com/cilium/tetragon/pkg/policyfilter"
+	"github.com/cilium/tetragon/pkg/selectors"
 	"github.com/cilium/tetragon/pkg/sensors"
+	"github.com/cilium/tetragon/pkg/sensors/program"
 	"github.com/cilium/tetragon/pkg/tracingpolicy"
 )
 
@@ -55,6 +57,51 @@ func TestValidateKprobeSubstringFeatures(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAppendMacrosAndValidateSubStringFeatures(t *testing.T) {
+	selectorSpecs := []v1alpha1.KProbeSelector{{Macros: []string{"substring"}}}
+	macros := map[string]v1alpha1.KProbeSelector{
+		"substring": {
+			MatchArgs: []v1alpha1.ArgSelector{{Operator: "SubString"}},
+		},
+	}
+
+	err := appendMacrosAndValidateSelectors(selectorSpecs, macros)
+	if bpf.HasKfunc("bpf_strnstr") {
+		require.NoError(t, err)
+	} else {
+		require.EqualError(t, err, "can't use SubString operator, no kernel support")
+	}
+	require.Equal(t, "SubString", selectorSpecs[0].MatchArgs[0].Operator)
+}
+
+func TestCreateSelectorMapsSubStringMap(t *testing.T) {
+	state, err := selectors.InitKernelSelectorState(&selectors.KernelSelectorArgs{
+		Selectors: []v1alpha1.KProbeSelector{{
+			MatchArgs: []v1alpha1.ArgSelector{{
+				Index:    0,
+				Operator: "SubString",
+				Values:   []string{"test0", "test1"},
+			}},
+		}},
+		Args: []v1alpha1.KProbeArg{{Index: 0, Type: "string"}},
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, selectors.CleanupKernelSelectorState(state))
+	})
+
+	load := program.Builder("", "", "", "", "")
+	for _, selectorMap := range createSelectorMaps(load, state) {
+		if selectorMap.Name == "substring_map" {
+			entries, set := selectorMap.GetMaxEntries()
+			require.True(t, set)
+			require.Equal(t, uint32(2), entries)
+			return
+		}
+	}
+	t.Fatal("substring_map not created")
 }
 
 func TestKprobeValidationListWrongSyscallName(t *testing.T) {

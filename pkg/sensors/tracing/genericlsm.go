@@ -439,7 +439,7 @@ func createGenericLsmSensor(
 	var selectorStatsBase uint32
 	dups := NewDupInstance()
 	for _, hook := range lsmHooks {
-		if err := appendMacrosSelectors(hook.Selectors, spec.SelectorsMacros); err != nil {
+		if err := appendMacrosAndValidateSelectors(hook.Selectors, spec.SelectorsMacros); err != nil {
 			return nil, fmt.Errorf("append macros selectors: %w", err)
 		}
 
