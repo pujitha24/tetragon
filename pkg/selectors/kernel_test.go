@@ -1618,6 +1618,28 @@ func TestParseMatchArgSubString(t *testing.T) {
 	}
 }
 
+func TestParseMatchArgSubStringSharedMaps(t *testing.T) {
+	maps := &KernelSelectorMaps{}
+	sig := []v1alpha1.KProbeArg{{Index: 0, Type: "string"}}
+
+	parse := func(value string) *KernelSelectorState {
+		state := NewKernelSelectorState(nil, maps, false, 0, 0, nil)
+		arg := &v1alpha1.ArgSelector{Index: 0, Operator: "SubString", Values: []string{value}}
+		require.NoError(t, ParseMatchArg(state, arg, sig))
+		return state
+	}
+
+	first := parse("first")
+	second := parse("second")
+	duplicate := parse("first")
+
+	require.Equal(t, uint32(0), binary.LittleEndian.Uint32(first.data.e[16:20]))
+	require.Equal(t, uint32(1), binary.LittleEndian.Uint32(second.data.e[16:20]))
+	require.Equal(t, uint32(0), binary.LittleEndian.Uint32(duplicate.data.e[16:20]))
+	require.Equal(t, []string{"first", "second"}, first.SubStrings())
+	require.Equal(t, first.SubStrings(), second.SubStrings())
+}
+
 func TestParseCapabilityMask(t *testing.T) {
 	v, err := parseCapabilitiesMask("100")
 	require.NoError(t, err)
