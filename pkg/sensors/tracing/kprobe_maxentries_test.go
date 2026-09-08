@@ -90,6 +90,38 @@ spec:
 `)
 	})
 
+	t.Run("substring_map", func(t *testing.T) {
+		if !bpf.HasKfunc("bpf_strnstr") {
+			t.Skip("skipping, no bpf_strnstr kfunc in kernel")
+		}
+
+		run(t, []testMap{
+			{"substring_map", 2},
+		}, `
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "substring-map"
+spec:
+  options:
+  - name: "disable-kprobe-multi"
+    value: "1"
+  kprobes:
+  - call: security_file_open
+    syscall: false
+    args:
+    - index: 0
+      type: file
+    selectors:
+    - matchArgs:
+      - index: 0
+        operator: "SubString"
+        values:
+        - test0
+        - test1
+`)
+	})
+
 	t.Run("stack_trace_map", func(t *testing.T) {
 		run(t, []testMap{
 			{"fdinstall_map", 1},

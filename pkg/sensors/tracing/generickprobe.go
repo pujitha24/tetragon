@@ -1034,7 +1034,13 @@ func createKprobeSensorFromEntry(polInfo *policyInfo, kprobeEntry *genericKprobe
 	maps = append(maps, workloadsMap)
 
 	if has.selector {
-		maps = append(maps, createSelectorMaps(load, getProgramSelector(load, kprobeEntry))...)
+		selector := getProgramSelector(load, kprobeEntry)
+		maps = append(maps, createSelectorMaps(load, selector)...)
+		if substringMapEntries := len(selector.SubStrings()); substringMapEntries > 0 {
+			substringMap := program.MapBuilderSensor("substring_map", load)
+			substringMap.SetMaxEntries(substringMapEntries)
+			maps = append(maps, substringMap)
+		}
 
 		selMatchBinariesMap := program.MapBuilderProgram("tg_mb_sel_opts", load)
 		maps = append(maps, selMatchBinariesMap)
@@ -1142,7 +1148,13 @@ func createKprobeSensorFromEntry(polInfo *policyInfo, kprobeEntry *genericKprobe
 		maps = append(maps, filterMap)
 
 		if has.selector {
-			maps = append(maps, createSelectorMaps(loadret, getProgramSelector(loadret, kprobeEntry))...)
+			selector := getProgramSelector(loadret, kprobeEntry)
+			maps = append(maps, createSelectorMaps(loadret, selector)...)
+			if selector != nil && len(selector.SubStrings()) > 0 {
+				substringMap := program.MapBuilderSensor("substring_map", loadret)
+				substringMap.SetMaxEntries(len(selector.SubStrings()))
+				maps = append(maps, substringMap)
+			}
 		}
 
 		// add maps with non-default paths (pins) to the retprobe
