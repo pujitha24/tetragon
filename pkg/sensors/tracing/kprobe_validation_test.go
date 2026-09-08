@@ -30,6 +30,33 @@ func checkCrd(t *testing.T, crd string) error {
 	return err
 }
 
+func TestValidateKprobeSubstringFeatures(t *testing.T) {
+	tests := []struct {
+		operator string
+		kfunc    string
+	}{
+		{operator: "SubString", kfunc: "bpf_strnstr"},
+		{operator: "SubStringIgnCase", kfunc: "bpf_strncasestr"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.operator, func(t *testing.T) {
+			spec := &v1alpha1.KProbeSpec{
+				Selectors: []v1alpha1.KProbeSelector{{
+					MatchArgs: []v1alpha1.ArgSelector{{Operator: test.operator}},
+				}},
+			}
+
+			err := validateKprobeFeatures(spec)
+			if bpf.HasKfunc(test.kfunc) {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, "can't use "+test.operator+" operator, no kernel support")
+			}
+		})
+	}
+}
+
 func TestKprobeValidationListWrongSyscallName(t *testing.T) {
 
 	// messed up syscall name in the list

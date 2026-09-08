@@ -334,6 +334,16 @@ func validateKprobeType(ty string) error {
 	return nil
 }
 
+func validateKprobeFeatures(spec *v1alpha1.KProbeSpec) error {
+	if selectors.HasOperator(spec.Selectors, selectors.SelectorOpSubString) && !bpf.HasKfunc("bpf_strnstr") {
+		return errors.New("can't use SubString operator, no kernel support")
+	}
+	if selectors.HasOperator(spec.Selectors, selectors.SelectorOpSubStringIgnCase) && !bpf.HasKfunc("bpf_strncasestr") {
+		return errors.New("can't use SubStringIgnCase operator, no kernel support")
+	}
+	return nil
+}
+
 type kpValidateInfo struct {
 	calls        []string
 	syscall      bool
@@ -375,6 +385,10 @@ func preValidateKprobe(
 	btfobj *btf.Spec,
 	lists []v1alpha1.ListSpec,
 ) (*kpValidateInfo, error) {
+	if err := validateKprobeFeatures(f); err != nil {
+		return nil, err
+	}
+
 	isSyscall := f.Syscall
 	var calls []string
 	// the f.Call is either defined as list:NAME
